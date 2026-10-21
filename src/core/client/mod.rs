@@ -3,12 +3,15 @@
 
 mod auth;
 mod constants;
+mod rate_limit;
 mod retry;
 pub(crate) mod urls;
 
 use crate::core::YfError;
 use crate::core::client::constants::DEFAULT_BASE_INSIDER_SEARCH;
 use crate::core::currency_resolver::{CurrencyCacheKey, CurrencyHints, ResolvedCurrency};
+pub use rate_limit::RateLimit;
+use rate_limit::RateLimiter;
 pub use retry::{Backoff, CacheEndpoint, CacheMode, RetryConfig};
 pub(crate) use urls::{SymbolEndpoint, normalize_symbol, normalize_symbols};
 
@@ -305,6 +308,7 @@ pub struct YfClient {
     base_news: Url,
     base_insider_search: Url,
     base_timeseries: Url,
+    base_visualization: Url,
     cookie_url: Url,
     crumb_url: Url,
     user_agent: String,
@@ -313,6 +317,8 @@ pub struct YfClient {
     credential_fetch_lock: Arc<tokio::sync::Mutex<()>>,
 
     retry: RetryConfig,
+    /// Shared by every clone; `None` when no client-side rate limit is configured.
+    rate_limiter: Option<Arc<RateLimiter>>,
     pub(crate) currency_cache: Arc<BoundedSideMap<CurrencyCacheKey, ResolvedCurrency>>,
     pub(crate) currency_hints: Arc<BoundedSideMap<String, CurrencyHints>>,
     // Cache of resolved instruments by original ticker string
@@ -356,6 +362,10 @@ impl std::fmt::Debug for YfClient {
                 &crate::core::redaction::RedactedUrl::new(&self.base_timeseries),
             )
             .field(
+                "base_visualization",
+                &crate::core::redaction::RedactedUrl::new(&self.base_visualization),
+            )
+            .field(
                 "cookie_url",
                 &crate::core::redaction::RedactedUrl::new(&self.cookie_url),
             )
@@ -365,6 +375,10 @@ impl std::fmt::Debug for YfClient {
             )
             .field("user_agent", &self.user_agent)
             .field("retry", &self.retry)
+            .field(
+                "rate_limit",
+                &self.rate_limiter.as_deref().map(RateLimiter::limit),
+            )
             .field("currency_cache", &self.currency_cache)
             .field("currency_hints", &self.currency_hints)
             .field("instrument_cache", &self.instrument_cache)
@@ -420,6 +434,10 @@ impl YfClient {
 
     pub(crate) const fn base_insider_search(&self) -> &Url {
         &self.base_insider_search
+    }
+
+    pub(crate) const fn base_visualization(&self) -> &Url {
+        &self.base_visualization
     }
 
     /// Returns `true` if in-memory caching is enabled for this client.
@@ -535,6 +553,7 @@ impl YfClient {
         let cfg = override_retry.unwrap_or(&self.retry);
         cfg.validate()?;
         if !cfg.enabled {
+            self.throttle().await;
             return Ok(req.send().await?);
         }
 
@@ -543,28 +562,25 @@ impl YfClient {
             let Some(cloned_req) = req.try_clone() else {
                 return Err(YfError::RequestNotCloneable);
             };
+            self.throttle().await;
             let response = cloned_req.send().await;
 
             match response {
                 Ok(resp) => {
                     let code = resp.status().as_u16();
                     if cfg.retry_on_status.contains(&code) && attempt < cfg.max_retries {
-                        #[cfg(feature = "tracing")]
-                        {
-                            let backoff = compute_backoff_duration(&cfg.backoff, attempt);
-                            tracing::event!(
-                                tracing::Level::INFO,
-                                attempt,
-                                backoff_ms = backoff.as_secs_f64() * 1000.0,
-                                status = code,
-                                "retrying after status"
-                            );
-                            tokio::time::sleep(backoff).await;
-                        }
-                        #[cfg(not(feature = "tracing"))]
-                        {
-                            sleep_backoff(&cfg.backoff, attempt).await;
-                        }
+                        let backoff = compute_backoff_duration(&cfg.backoff, attempt);
+                        let retry_after = retry_after_hint(cfg, &resp);
+                        let delay = retry::retry_delay_for_status(cfg, code, backoff, retry_after);
+                        crate::core::logging::trace_info!(
+                            attempt,
+                            backoff_ms = delay.as_secs_f64() * 1000.0,
+                            retry_after_ms = retry_after.map(|d| d.as_secs_f64() * 1000.0),
+                            status = code,
+                            "retrying after status"
+                        );
+                        drop(resp);
+                        tokio::time::sleep(delay).await;
                         attempt += 1;
                         continue;
                     }
@@ -575,30 +591,30 @@ impl YfClient {
                         || (cfg.retry_on_connect && e.is_connect());
 
                     if should_retry && attempt < cfg.max_retries {
-                        #[cfg(feature = "tracing")]
-                        {
-                            let backoff = compute_backoff_duration(&cfg.backoff, attempt);
-                            tracing::event!(
-                                tracing::Level::INFO,
-                                attempt,
-                                backoff_ms = backoff.as_secs_f64() * 1000.0,
-                                error = %crate::core::redaction::RedactedDisplay::new(&e),
-                                timeout = e.is_timeout(),
-                                connect = e.is_connect(),
-                                "retrying after error"
-                            );
-                            tokio::time::sleep(backoff).await;
-                        }
-                        #[cfg(not(feature = "tracing"))]
-                        {
-                            sleep_backoff(&cfg.backoff, attempt).await;
-                        }
+                        let backoff = compute_backoff_duration(&cfg.backoff, attempt);
+                        crate::core::logging::trace_info!(
+                            attempt,
+                            backoff_ms = backoff.as_secs_f64() * 1000.0,
+                            error = %crate::core::redaction::RedactedDisplay::new(&e),
+                            timeout = e.is_timeout(),
+                            connect = e.is_connect(),
+                            "retrying after error"
+                        );
+                        tokio::time::sleep(backoff).await;
                         attempt += 1;
                         continue;
                     }
                     return Err(e.into());
                 }
             }
+        }
+    }
+
+    /// Waits for the client-side rate limiter, if one is configured.
+    #[inline]
+    async fn throttle(&self) {
+        if let Some(limiter) = &self.rate_limiter {
+            limiter.acquire().await;
         }
     }
 
@@ -625,6 +641,7 @@ pub struct YfClientBuilder {
     base_news: Option<Url>,
     base_insider_search: Option<Url>,
     base_timeseries: Option<Url>,
+    base_visualization: Option<Url>,
     cookie_url: Option<Url>,
     crumb_url: Option<Url>,
 
@@ -636,6 +653,7 @@ pub struct YfClientBuilder {
     timeout: Option<Duration>,
     connect_timeout: Option<Duration>,
     retry: Option<RetryConfig>,
+    rate_limit: Option<RateLimit>,
     cache_ttl: Option<Duration>,
     cache_ttls: HashMap<CacheEndpoint, Duration>,
     cache_max_entries: Option<NonZeroUsize>,
@@ -744,6 +762,14 @@ impl YfClientBuilder {
         self
     }
 
+    /// Sets a custom URL for the visualization (calendars / earnings dates) POST endpoint.
+    /// Default: `https://query1.finance.yahoo.com/v1/finance/visualization`.
+    #[must_use]
+    pub fn base_visualization(mut self, url: Url) -> Self {
+        self.base_visualization = Some(url);
+        self
+    }
+
     /// Overrides the URL used to acquire an initial cookie.
     #[must_use]
     pub fn cookie_url(mut self, url: Url) -> Self {
@@ -764,6 +790,21 @@ impl YfClientBuilder {
     #[must_use]
     pub fn retry_config(mut self, cfg: RetryConfig) -> Self {
         self.retry = Some(cfg);
+        self
+    }
+
+    /// Caps outbound HTTP requests with a client-side token bucket.
+    ///
+    /// The limit is shared by every clone of the built [`YfClient`]. Each HTTP
+    /// attempt, including retries and cookie/crumb requests, consumes one token;
+    /// requests beyond the burst wait for a token instead of failing. The WebSocket
+    /// stream is not limited. By default no limit is applied.
+    ///
+    /// The limit is validated by [`build`](Self::build), which returns
+    /// `YfError::InvalidParams` if `per_second` or `burst` is zero.
+    #[must_use]
+    pub const fn rate_limit(mut self, limit: RateLimit) -> Self {
+        self.rate_limit = Some(limit);
         self
     }
 
@@ -963,7 +1004,8 @@ impl YfClientBuilder {
     ///
     /// # Errors
     ///
-    /// Returns an error if the base URLs are invalid or the HTTP client fails to build.
+    /// Returns an error if the base URLs are invalid, the HTTP client fails to build,
+    /// or the retry policy or rate limit is invalid (`YfError::InvalidParams`).
     pub fn build(self) -> Result<YfClient, YfError> {
         let timeouts = self.http_timeouts();
         let base_chart = Self::configured_url(self.base_chart, DEFAULT_BASE_CHART)?;
@@ -978,6 +1020,10 @@ impl YfClientBuilder {
             Self::configured_url(self.base_insider_search, DEFAULT_BASE_INSIDER_SEARCH)?;
         let base_timeseries =
             Self::configured_url(self.base_timeseries, constants::DEFAULT_BASE_TIMESERIES)?;
+        let base_visualization = Self::configured_url(
+            self.base_visualization,
+            constants::DEFAULT_BASE_VISUALIZATION,
+        )?;
 
         let cookie_url = Self::configured_url(self.cookie_url, DEFAULT_COOKIE_URL)?;
         let crumb_url = Self::configured_url(self.crumb_url, DEFAULT_CRUMB_URL)?;
@@ -1025,6 +1071,11 @@ impl YfClientBuilder {
 
         let retry = self.retry.unwrap_or_default();
         retry.validate()?;
+        let rate_limiter = self
+            .rate_limit
+            .map(RateLimiter::new)
+            .transpose()?
+            .map(Arc::new);
         let side_cache_max_entries = self
             .side_cache_max_entries
             .map_or(DEFAULT_SIDE_CACHE_MAX_ENTRIES, NonZeroUsize::get);
@@ -1039,12 +1090,14 @@ impl YfClientBuilder {
             base_news,
             base_insider_search,
             base_timeseries,
+            base_visualization,
             cookie_url,
             crumb_url,
             user_agent,
             state: Arc::new(RwLock::new(initial_state)),
             credential_fetch_lock: Arc::new(tokio::sync::Mutex::new(())),
             retry,
+            rate_limiter,
             currency_cache: Arc::new(BoundedSideMap::new(side_cache_max_entries)),
             currency_hints: Arc::new(BoundedSideMap::new(side_cache_max_entries)),
             instrument_cache: Arc::new(BoundedSideMap::new(side_cache_max_entries)),
@@ -1060,10 +1113,17 @@ impl YfClientBuilder {
     }
 }
 
-#[cfg(not(feature = "tracing"))]
-async fn sleep_backoff(b: &Backoff, attempt: u32) {
-    let dur = compute_backoff_duration(b, attempt);
-    tokio::time::sleep(dur).await;
+/// Reads and parses the `Retry-After` header when the policy honours it for this status.
+fn retry_after_hint(cfg: &RetryConfig, resp: &reqwest::Response) -> Option<Duration> {
+    if !retry::wants_retry_after(cfg, resp.status().as_u16()) {
+        return None;
+    }
+    let value = resp
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?;
+    retry::parse_retry_after(value, chrono::Utc::now())
 }
 
 #[inline]
@@ -1297,6 +1357,26 @@ mod tests {
         cache.insert(CloneCountingKey::new("GOOGL", &clones), "googl");
 
         assert!(cache.len() <= 2);
+    }
+
+    #[test]
+    fn client_without_rate_limit_has_no_limiter() {
+        let client = YfClient::builder().build().expect("client builds");
+        assert!(client.rate_limiter.is_none());
+    }
+
+    #[test]
+    fn rate_limiter_is_shared_by_client_clones() {
+        let client = YfClient::builder()
+            .rate_limit(RateLimit::per_second(5).burst(2))
+            .build()
+            .expect("client builds");
+        let clone = client.clone();
+        let (Some(a), Some(b)) = (&client.rate_limiter, &clone.rate_limiter) else {
+            panic!("rate limiter configured");
+        };
+        assert!(Arc::ptr_eq(a, b));
+        assert_eq!(a.limit(), RateLimit::per_second(5).burst(2));
     }
 
     #[test]

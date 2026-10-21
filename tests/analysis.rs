@@ -9,6 +9,8 @@ mod analysis_offline;
 mod analysis_retry_synth;
 #[path = "analysis/strict_synthetic.rs"]
 mod analysis_strict_synth;
+#[path = "analysis/earnings_history.rs"]
+mod earnings_history;
 #[path = "analysis/earnings_trend.rs"]
 mod earnings_trend;
 #[path = "analysis/price_target.rs"]

@@ -24,7 +24,14 @@
 //! * **Cash Flow Statements**: Fetch annual and quarterly cash flow data.
 //! * **Earnings Data**: Historical earnings, revenue estimates, and EPS data.
 //! * **Shares Outstanding**: Historical data on shares outstanding (annual and quarterly).
+//! * **TTM Statements**: Trailing-twelve-month income statement and cash flow.
+//! * **Valuation Measures**: Market cap, enterprise value, and valuation ratios over time.
+//! * **Earnings History & Dates**: Past EPS surprises plus past and upcoming earnings report dates.
+//! * **SEC Filings**: Recent filings with EDGAR links and exhibits.
 //! * **Corporate Calendar**: Earnings dates, ex-dividend dates, and dividend payment dates.
+//!
+//! ### Funds & ETFs
+//! * **Funds Data**: Top holdings, sector weightings, asset classes, and bond ratings for ETFs and mutual funds.
 //!
 //! ### Options & Derivatives
 //! * **Options Chains**: Fetch expiration dates and full option chains (calls and puts).
@@ -52,6 +59,9 @@
 //! * **Company News**: Retrieve the latest articles and press releases for a ticker.
 //! * **Company Profiles**: Detailed information about companies, ETFs, and funds.
 //! * **Search**: Find tickers by name or keyword.
+//! * **Lookup**: Find symbols filtered by asset type (equity, ETF, future, currency, crypto, ...).
+//! * **Market Status & Summary**: Market open/close times and regional index snapshots.
+//! * **Calendars**: Market-wide earnings, IPO, stock split, and economic event calendars.
 //!
 //! ### Real-time Streaming
 //! * **WebSocket Streaming**: Get live quote updates using `WebSockets` (preferred method).
@@ -69,7 +79,8 @@
 //! * **Async API**: Built on `tokio` and `reqwest` for non-blocking I/O.
 //! * **High-Level `Ticker` Interface**: A convenient, yfinance-like struct for accessing all data for a single symbol.
 //! * **Builder Pattern**: Fluent builders for constructing complex queries.
-//! * **Configurable Retries**: Automatic retries with exponential backoff for transient network errors.
+//! * **Configurable Retries**: Automatic retries with exponential backoff for transient network errors, honouring Yahoo's `Retry-After`.
+//! * **Rate Limiting**: Optional client-side request budget shared across client clones.
 //! * **Caching**: Configurable caching behavior for API responses.
 //! * **Custom Timeouts**: Configurable request timeouts and connection settings.
 //!
@@ -140,16 +151,26 @@ pub mod core;
 // --- feature modules ---
 /// Fetch analyst ratings, price targets, and upgrade/downgrade history.
 pub mod analysis;
+/// Earnings, IPO, split and economic-event calendars, plus per-symbol earnings dates.
+pub mod calendars;
 /// Download historical data for multiple symbols concurrently.
 pub mod download;
 /// Fetch ESG (Environmental, Social, Governance) scores and involvement data.
 pub mod esg;
+/// Fetch a symbol's SEC filings.
+pub mod filings;
 /// Fetch financial statements (income, balance sheet, cash flow) and earnings data.
 pub mod fundamentals;
+/// Fetch ETF and mutual-fund data (holdings, sector weightings, operations).
+pub mod funds;
 /// Fetch historical OHLCV data for a single symbol.
 pub mod history;
 /// Fetch holder information, including major, institutional, and insider holders.
 pub mod holders;
+/// Look up symbols by asset type (equity, ETF, index, ...).
+pub mod lookup;
+/// Fetch market-wide status and index summaries per region.
+pub mod market;
 /// Fetch news articles for a ticker.
 pub mod news;
 /// Retrieve company or fund profile information.
@@ -169,7 +190,7 @@ pub mod ticker;
 // Core types that are provider-specific
 pub use core::{
     Backoff, CacheEndpoint, CacheMode, DataQuality, HistoryRequest, HistoryService,
-    ProjectionIssue, RetryConfig, YfClient, YfClientBuilder, YfCurrencyInference,
+    ProjectionIssue, RateLimit, RetryConfig, YfClient, YfClientBuilder, YfCurrencyInference,
     YfCurrencyPurpose, YfDiagnostics, YfError, YfResponse, YfWarning,
 };
 
@@ -183,12 +204,24 @@ pub mod dataframe {
 pub use dataframe::{Columnar, Decimal128Encode, ToDataFrame, ToDataFrameVec};
 
 // Provider-specific builders and utilities
-pub use analysis::AnalysisBuilder;
+pub use analysis::{AnalysisBuilder, EarningsHistoryRow};
+pub use calendars::{
+    CalendarDate, CalendarsBuilder, EarningsCallTiming, EarningsDate, EarningsDatesBuilder,
+    EarningsEvent, EarningsEventType, EconomicEvent, IpoEvent, StockSplitEvent,
+};
 pub use download::{DownloadAdjustment, DownloadBuilder, DownloadConcurrency};
 pub use esg::EsgBuilder;
-pub use fundamentals::FundamentalsBuilder;
+pub use filings::{SecFiling, SecFilingExhibit, SecFilingsBuilder};
+pub use fundamentals::{FundamentalsBuilder, ValuationBuilder, ValuationFrequency, ValuationRow};
+pub use funds::{
+    AssetClasses, BondHoldings, BondHoldingsValues, BondRatingWeight, EquityHoldings,
+    EquityHoldingsValues, FundHolding, FundOperations, FundOperationsValues, FundOverview,
+    FundSector, FundsData, FundsDataBuilder, SectorWeighting,
+};
 pub use history::HistoryBuilder;
 pub use holders::HoldersBuilder;
+pub use lookup::{LookupBuilder, LookupKind, LookupResult};
+pub use market::{MarketBuilder, MarketRegion, MarketStatus, MarketSummaryEntry};
 pub use news::{NewsBuilder, NewsTab};
 pub use quote::{QuotesBuilder, quotes, quotes_with_diagnostics};
 pub use screener::{

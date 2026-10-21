@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::core::wire::{BorrowedWireValue, RawNum, WireValue};
+use crate::core::wire::{BorrowedWireValue, RawDate, RawNum, WireValue};
 
 /* ---------------- Serde mapping (only what we need) ---------------- */
 
@@ -17,6 +17,9 @@ pub struct V10Result<'a> {
 
     #[serde(rename = "earningsTrend", default, borrow)]
     pub(crate) earnings_trend: BorrowedWireValue<'a, EarningsTrendNode<'a>>,
+
+    #[serde(rename = "earningsHistory", default, borrow)]
+    pub(crate) earnings_history: BorrowedWireValue<'a, EarningsHistoryNode<'a>>,
 }
 
 /* --- recommendation trend --- */
@@ -206,4 +209,30 @@ pub struct EpsRevisionsNode {
     #[serde(rename = "downLast30days", alias = "downLast30Days")]
     #[serde(default)]
     pub(crate) down_last_30_days: WireValue<RawNum<f64>>,
+}
+
+/* --- earnings history --- */
+
+#[derive(Deserialize)]
+pub struct EarningsHistoryNode<'a> {
+    #[serde(default, borrow)]
+    pub(crate) history: BorrowedWireValue<'a, Vec<BorrowedWireValue<'a, EarningsHistoryItemNode>>>,
+}
+
+#[derive(Deserialize)]
+pub struct EarningsHistoryItemNode {
+    #[serde(default)]
+    pub(crate) quarter: WireValue<RawDate>,
+    #[serde(default)]
+    pub(crate) period: WireValue<String>,
+    #[serde(default)]
+    pub(crate) currency: WireValue<String>,
+    #[serde(rename = "epsActual", default)]
+    pub(crate) eps_actual: WireValue<RawNum<f64>>,
+    #[serde(rename = "epsEstimate", default)]
+    pub(crate) eps_estimate: WireValue<RawNum<f64>>,
+    #[serde(rename = "epsDifference", default)]
+    pub(crate) eps_difference: WireValue<RawNum<f64>>,
+    #[serde(rename = "surprisePercent", default)]
+    pub(crate) surprise_percent: WireValue<RawNum<f64>>,
 }

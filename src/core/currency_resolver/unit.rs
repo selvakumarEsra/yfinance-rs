@@ -92,6 +92,14 @@ impl ResolvedCurrencyUnit {
         Ok(Money::new(decimal, self.currency.clone())?)
     }
 
+    /// Converts a provider amount quoted in this unit (possibly a minor unit such as
+    /// `GBp`) into major-unit money.
+    pub fn money_from_provider_decimal(&self, decimal: Decimal) -> Option<Money> {
+        decimal
+            .checked_mul(self.scale)
+            .and_then(|value| Money::new(value, self.currency.clone()).ok())
+    }
+
     fn scaled_decimal_from_f64(&self, value: f64) -> Option<Decimal> {
         decimal_from_f64(value).and_then(|decimal| decimal.checked_mul(self.scale))
     }

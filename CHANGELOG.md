@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- `CacheEndpoint` gains `Market`, `Lookup`, and `Visualization` variants and is
+  now `#[non_exhaustive]`, so exhaustive `match`es on it need a wildcard arm.
+- `RetryConfig` gains a `respect_retry_after` field (default `true`). Code that
+  builds `RetryConfig` with a struct literal must add the field or use
+  `..Default::default()`.
+
+### Added
+
+- SEC filings: `Ticker::sec_filings()` and `SecFilingsBuilder` (quoteSummary `secFilings`).
+- Trailing-twelve-month statements: `Ticker::ttm_income_stmt()` / `ttm_cashflow()`
+  and the matching `FundamentalsBuilder` methods.
+- Valuation measures: `Ticker::valuation_measures()` and `ValuationBuilder`
+  (market cap, enterprise value, P/E, PEG, P/S, P/B, EV/revenue, EV/EBITDA).
+  Long fundamentals-timeseries key lists are now split across several requests.
+- Fund and ETF data: `Ticker::funds_data()` and `FundsDataBuilder` (top holdings,
+  sector weightings, asset classes, equity/bond statistics, bond ratings).
+- Earnings history: `Ticker::earnings_history()` and `AnalysisBuilder::earnings_history()`.
+- Earnings dates: `Ticker::earnings_dates()` and `EarningsDatesBuilder` (past and
+  future report dates from Yahoo's visualization API).
+- Market-wide calendars: `CalendarsBuilder` with `earnings()`, `ipos()`, `splits()`,
+  and `economic_events()`.
+- Market status and summary: `MarketBuilder` with `status()` and `summary()`.
+- Symbol lookup by asset type: `LookupBuilder` and `LookupKind`.
+- Rate limiting: retries after a 429/503 now wait at least as long as Yahoo's
+  `Retry-After` header asks (capped at the backoff's maximum delay), and
+  `YfClientBuilder::rate_limit(RateLimit::per_second(n).burst(b))` adds an
+  optional request budget shared by all clones of a client. Off by default.
+
 ## [0.9.1] - 2026-07-11
 
 ### Fixed

@@ -1,0 +1,28 @@
+{
+  "finance": {
+    "result": [
+      {
+        "documents": [
+          {
+            "entityIdType": "splits",
+            "totalCount": 3,
+            "columns": [
+              {"id": "ticker", "label": "Symbol", "type": "STRING"},
+              {"id": "companyshortname", "label": "Company Name", "type": "STRING"},
+              {"id": "startdatetime", "label": "Payable On", "type": "DATE"},
+              {"id": "optionable", "label": "Optionable?", "type": "STRING"},
+              {"id": "old_share_worth", "label": "Old Share Worth", "type": "NUMBER"},
+              {"id": "share_worth", "label": "Share Worth", "type": "NUMBER"}
+            ],
+            "rows": [
+              ["SPLT", "Split Co.", "2025-11-07T05:00:00Z", "Yes", 1, 10],
+              ["RVRS", "Reverse Co.", "2025-11-04T05:00:00Z", "No", 20, 1],
+              ["BADS", "Bad Split Co.", "next week", "Yes", 1, 2]
+            ]
+          }
+        ]
+      }
+    ],
+    "error": null
+  }
+}

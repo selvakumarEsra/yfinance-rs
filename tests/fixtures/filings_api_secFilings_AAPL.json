@@ -1,0 +1,73 @@
+{
+  "quoteSummary": {
+    "result": [
+      {
+        "secFilings": {
+          "filings": [
+            {
+              "date": "2025-10-31",
+              "epochDate": 1761868800,
+              "type": "10-K",
+              "title": "Annual report pursuant to Section 13 and 15(d)",
+              "edgarUrl": "https://finance.yahoo.com/sec-filing/AAPL/0000320193-25-000079_320193",
+              "exhibits": [
+                {
+                  "type": "10-K",
+                  "url": "https://finance.yahoo.com/sec-filing/AAPL/0000320193-25-000079_320193/aapl-20250927.htm",
+                  "downloadUrl": "https://cdn.yahoofinance.com/prod/sec-filings/0000320193/000032019325000079/aapl-20250927.htm"
+                },
+                {
+                  "type": "EX-21.1",
+                  "url": "https://finance.yahoo.com/sec-filing/AAPL/0000320193-25-000079_320193/a10-kexhibit2119272025.htm",
+                  "downloadUrl": "https://cdn.yahoofinance.com/prod/sec-filings/0000320193/000032019325000079/a10-kexhibit2119272025.htm"
+                },
+                {
+                  "type": "EX-31.1",
+                  "url": "https://finance.yahoo.com/sec-filing/AAPL/0000320193-25-000079_320193/a10-kexhibit31109272025.htm"
+                }
+              ],
+              "maxAge": 1
+            },
+            {
+              "date": "2025-08-01",
+              "epochDate": 1754006400,
+              "type": "10-Q",
+              "title": "Quarterly report pursuant to Section 13 or 15(d)",
+              "edgarUrl": "https://finance.yahoo.com/sec-filing/AAPL/0000320193-25-000073_320193",
+              "exhibits": [
+                {
+                  "type": "10-Q",
+                  "url": "https://finance.yahoo.com/sec-filing/AAPL/0000320193-25-000073_320193/aapl-20250628.htm",
+                  "downloadUrl": "https://cdn.yahoofinance.com/prod/sec-filings/0000320193/000032019325000073/aapl-20250628.htm"
+                },
+                {
+                  "type": "EX-32.1",
+                  "url": "https://finance.yahoo.com/sec-filing/AAPL/0000320193-25-000073_320193/a10-qexhibit32106282025.htm",
+                  "downloadUrl": "https://cdn.yahoofinance.com/prod/sec-filings/0000320193/000032019325000073/a10-qexhibit32106282025.htm"
+                }
+              ],
+              "maxAge": 1
+            },
+            {
+              "date": "2025-07-31",
+              "epochDate": 1753920000,
+              "type": "8-K",
+              "title": "Results of Operations and Financial Condition",
+              "edgarUrl": "https://finance.yahoo.com/sec-filing/AAPL/0000320193-25-000071_320193",
+              "exhibits": [
+                {
+                  "type": "EX-99.1",
+                  "url": "https://finance.yahoo.com/sec-filing/AAPL/0000320193-25-000071_320193/a8-kex991q3202506282025.htm",
+                  "downloadUrl": "https://cdn.yahoofinance.com/prod/sec-filings/0000320193/000032019325000071/a8-kex991q3202506282025.htm"
+                }
+              ],
+              "maxAge": 1
+            }
+          ],
+          "maxAge": 86400
+        }
+      }
+    ],
+    "error": null
+  }
+}

@@ -1,11 +1,13 @@
 mod api;
 mod model;
 
+mod earnings_history;
 mod fetch;
 mod wire;
 
 pub use model::{
-    EarningsTrendRow, PriceTarget, RecommendationRow, RecommendationSummary, UpgradeDowngradeRow,
+    EarningsHistoryRow, EarningsTrendRow, PriceTarget, RecommendationRow, RecommendationSummary,
+    UpgradeDowngradeRow,
 };
 
 use crate::core::{CallOptions, YfClient, YfError, YfResponse};
@@ -161,6 +163,48 @@ impl AnalysisBuilder {
         override_currency: Option<Currency>,
     ) -> Result<YfResponse<Vec<EarningsTrendRow>>, YfError> {
         api::earnings_trend(&self.client, &self.symbol, override_currency, &self.options).await
+    }
+
+    /// Fetches past quarters' EPS actual, estimate, difference and surprise from the
+    /// `earningsHistory` module, oldest quarter first.
+    ///
+    /// EPS amounts are prices in the resolved earnings currency (Yahoo's per-row
+    /// `currency`, else the usual analyst-estimate currency resolution). Provide
+    /// `Some(currency)` to override the auto-resolved currency for this call.
+    /// The surprise is a fraction of the estimate (`0.05` means 5 %).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails or the data is malformed.
+    pub async fn earnings_history(
+        &self,
+        override_currency: Option<Currency>,
+    ) -> Result<Vec<EarningsHistoryRow>, YfError> {
+        Ok(self
+            .earnings_history_with_diagnostics(override_currency)
+            .await?
+            .into_data())
+    }
+
+    /// Fetches earnings history with projection diagnostics.
+    ///
+    /// A response without the `earningsHistory` module yields an empty list plus a
+    /// `ProviderFeatureUnavailable` warning in best-effort mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails or strict data-quality mode rejects a projection issue.
+    pub async fn earnings_history_with_diagnostics(
+        &self,
+        override_currency: Option<Currency>,
+    ) -> Result<YfResponse<Vec<EarningsHistoryRow>>, YfError> {
+        earnings_history::earnings_history(
+            &self.client,
+            &self.symbol,
+            override_currency,
+            &self.options,
+        )
+        .await
     }
 }
 

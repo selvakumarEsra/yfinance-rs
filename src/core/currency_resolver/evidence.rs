@@ -5,13 +5,16 @@ pub enum TradingCurrencyEvidence<'a> {
     None,
     ChartMeta(Option<&'a str>),
     OptionsQuote(Option<&'a str>),
+    TimeseriesCurrencyCode(Option<&'a str>),
 }
 
 impl<'a> TradingCurrencyEvidence<'a> {
     pub(super) const fn direct_code(self) -> Option<&'a str> {
         match self {
             Self::None => None,
-            Self::ChartMeta(code) | Self::OptionsQuote(code) => code,
+            Self::ChartMeta(code)
+            | Self::OptionsQuote(code)
+            | Self::TimeseriesCurrencyCode(code) => code,
         }
     }
 
@@ -20,6 +23,7 @@ impl<'a> TradingCurrencyEvidence<'a> {
             Self::None => "none",
             Self::ChartMeta(_) => "chart.meta.currency",
             Self::OptionsQuote(_) => "options quote currency",
+            Self::TimeseriesCurrencyCode(_) => "timeseries currencyCode",
         }
     }
 
@@ -28,6 +32,7 @@ impl<'a> TradingCurrencyEvidence<'a> {
             Self::None => None,
             Self::ChartMeta(_) => Some(DirectCurrencyField::ChartMeta),
             Self::OptionsQuote(_) => Some(DirectCurrencyField::OptionsQuote),
+            Self::TimeseriesCurrencyCode(_) => Some(DirectCurrencyField::TimeseriesCurrencyCode),
         }
     }
 }

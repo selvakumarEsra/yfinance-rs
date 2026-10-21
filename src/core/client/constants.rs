@@ -39,3 +39,7 @@ pub const DEFAULT_BASE_NEWS: &str = "https://finance.yahoo.com";
 /// Base URL for the Yahoo Finance timeseries API.
 pub const DEFAULT_BASE_TIMESERIES: &str =
     "https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/";
+
+/// URL for the Yahoo Finance visualization POST API (calendars, earnings dates).
+pub const DEFAULT_BASE_VISUALIZATION: &str =
+    "https://query1.finance.yahoo.com/v1/finance/visualization";

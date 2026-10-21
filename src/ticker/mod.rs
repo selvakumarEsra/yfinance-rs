@@ -1,8 +1,11 @@
+mod earnings_dates;
+mod gap_quote_summary;
 mod info;
 mod isin;
 mod model;
 mod options;
 mod quote;
+mod valuation;
 
 pub use crate::core::models::{FastInfo, MovingAverages};
 pub use model::{Info, OptionChain, OptionContract};

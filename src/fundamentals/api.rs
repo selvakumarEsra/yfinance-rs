@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use std::collections::{BTreeMap, btree_map::Entry};
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
         conversions::i64_to_date,
         currency_resolver::{
             CurrencyHints, CurrencyPurpose, ReportingCurrencyEvidence, ResolvedCurrencyUnit,
-            project_currency_resolution,
+            TradingCurrencyEvidence, project_currency_resolution,
         },
         diagnostics::{
             WireProjection, optional_money_decimal_with_currency_issue,
@@ -25,6 +25,7 @@ use paft::money::{Currency, Money};
 use url::Url;
 
 use super::fetch::{fetch_modules_body, parse_modules};
+use super::valuation::{ValuationFrequency, ValuationRow};
 use super::{
     BalanceSheetRow, CashflowRow, Earnings, EarningsQuarter, EarningsQuarterEps, EarningsYear,
     IncomeStatementRow,
@@ -120,18 +121,45 @@ struct TimeseriesValueU64 {
     reported_value: WireValue<RawNumU64>,
 }
 
-struct TimeseriesRequest<'a> {
-    client: &'a YfClient,
-    symbol: &'a str,
-    quarterly: bool,
-    override_currency: Option<Currency>,
-    options: &'a CallOptions,
-    keys: &'a [&'static str],
-    monetary_keys: &'a [&'static str],
-    endpoint_name: &'static str,
+/// Maximum number of `type=` keys sent in a single fundamentals-timeseries request.
+///
+/// Matches Python yfinance's `_CHUNK_KEYS`, tuned so the request URL stays under ~2KB
+/// even for the longest `annual` prefix. Key lists longer than this are split into
+/// several requests whose results are merged.
+pub(super) const TIMESERIES_MAX_KEYS_PER_REQUEST: usize = 60;
+
+/// Which currency a timeseries' monetary values are denominated in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TimeseriesCurrencyKind {
+    /// Statement line items (reporting / financial currency).
+    Reporting,
+    /// Market-derived values such as market cap (trading currency).
+    Trading,
 }
 
-struct TimeseriesItem<'a, T> {
+pub(super) struct TimeseriesRequest<'a> {
+    pub(super) client: &'a YfClient,
+    pub(super) symbol: &'a str,
+    /// Key prefix: `annual`, `quarterly`, `monthly` or `trailing`.
+    pub(super) prefix: &'static str,
+    pub(super) override_currency: Option<Currency>,
+    pub(super) options: &'a CallOptions,
+    pub(super) keys: &'a [&'static str],
+    pub(super) monetary_keys: &'a [&'static str],
+    pub(super) endpoint_name: &'static str,
+    pub(super) currency_kind: TimeseriesCurrencyKind,
+    pub(super) chunk_size: usize,
+}
+
+/// Key prefix for trailing-twelve-month (TTM) statement series.
+pub(super) const TTM_PREFIX: &str = "trailing";
+
+/// Maps the `quarterly` flag onto the statement key prefix.
+pub(super) const fn statement_prefix(quarterly: bool) -> &'static str {
+    if quarterly { "quarterly" } else { "annual" }
+}
+
+pub(super) struct TimeseriesItem<'a, T> {
     key: &'a str,
     values_json: &'a serde_json::value::RawValue,
     rows_map: &'a mut BTreeMap<i64, T>,
@@ -144,7 +172,87 @@ struct TimeseriesItem<'a, T> {
     ctx: &'a mut ProjectionContext,
 }
 
-async fn fetch_timeseries_data<T, F>(
+/// Splits `keys` into request-sized chunks; a list within `chunk_size` stays one request.
+fn timeseries_key_chunks<'k>(
+    keys: &'k [&'static str],
+    chunk_size: usize,
+) -> Vec<&'k [&'static str]> {
+    let chunk_size = chunk_size.max(1);
+    if keys.len() <= chunk_size {
+        vec![keys]
+    } else {
+        keys.chunks(chunk_size).collect()
+    }
+}
+
+/// Fetches every chunk of `keys` and returns the raw response bodies in request order.
+async fn fetch_timeseries_bodies(
+    client: &YfClient,
+    symbol: &str,
+    endpoint_name: &str,
+    prefix: &str,
+    keys: &[&'static str],
+    chunk_size: usize,
+    options: &CallOptions,
+) -> Result<Vec<String>, YfError> {
+    let window = timeseries_window();
+    let chunks = timeseries_key_chunks(keys, chunk_size);
+    let chunked = chunks.len() > 1;
+    let mut bodies = Vec::with_capacity(chunks.len());
+    for (idx, chunk) in chunks.into_iter().enumerate() {
+        let url = timeseries_url(client, symbol, prefix, chunk, window)?;
+        // A single request keeps the historical endpoint/fixture key; chunked requests get a
+        // per-part suffix so record/replay and caching can tell the parts apart.
+        let endpoint = if chunked {
+            format!("timeseries_{endpoint_name}_{prefix}_part{}", idx + 1)
+        } else {
+            format!("timeseries_{endpoint_name}_{prefix}")
+        };
+        bodies.push(fetch_timeseries_body(client, symbol, &endpoint, url, options).await?);
+    }
+    Ok(bodies)
+}
+
+async fn resolve_timeseries_currency(
+    ctx: &mut ProjectionContext,
+    client: &YfClient,
+    symbol: &str,
+    currency_kind: TimeseriesCurrencyKind,
+    override_currency: Option<Currency>,
+    direct_currency: Option<&str>,
+    options: &CallOptions,
+) -> Result<(Option<ResolvedCurrencyUnit>, Option<ProjectionIssue>), YfError> {
+    let (purpose, resolution) = match currency_kind {
+        TimeseriesCurrencyKind::Reporting => (
+            CurrencyPurpose::Reporting,
+            client
+                .resolve_reporting_currency(
+                    symbol,
+                    override_currency,
+                    ReportingCurrencyEvidence::TimeseriesCurrencyCode(direct_currency),
+                    options,
+                )
+                .await,
+        ),
+        TimeseriesCurrencyKind::Trading => (
+            CurrencyPurpose::Trading,
+            client
+                .resolve_trading_currency(
+                    symbol,
+                    override_currency,
+                    TradingCurrencyEvidence::TimeseriesCurrencyCode(direct_currency),
+                    options,
+                )
+                .await,
+        ),
+    };
+    let projected_currency =
+        project_currency_resolution(ctx, symbol, purpose, direct_currency, resolution)?;
+    let currency_issue = projected_currency.issue().cloned();
+    Ok((projected_currency.into_unit(), currency_issue))
+}
+
+pub(super) async fn fetch_timeseries_data<T, F>(
     request: TimeseriesRequest<'_>,
     mut process_item: F,
 ) -> Result<YfResponse<Vec<T>>, YfError>
@@ -154,23 +262,37 @@ where
     let TimeseriesRequest {
         client,
         symbol,
-        quarterly,
+        prefix,
         override_currency,
         options,
         keys,
         monetary_keys,
         endpoint_name,
+        currency_kind,
+        chunk_size,
     } = request;
     let symbol = normalize_symbol(symbol)?;
 
     let mut ctx = ProjectionContext::new(endpoint_name, options.data_quality());
     let has_currency_override = override_currency.is_some();
-    let prefix = if quarterly { "quarterly" } else { "annual" };
-    let url = timeseries_url(client, &symbol, prefix, keys)?;
-    let body = fetch_timeseries_body(client, &symbol, endpoint_name, prefix, url, options).await?;
+    let bodies = fetch_timeseries_bodies(
+        client,
+        &symbol,
+        endpoint_name,
+        prefix,
+        keys,
+        chunk_size,
+        options,
+    )
+    .await?;
 
-    let envelope: TimeseriesEnvelope<'_> = serde_json::from_str(&body).map_err(YfError::json)?;
-    let result_vec = timeseries_results(envelope)?;
+    // Merge every chunk's result items; rows are keyed by timestamp below, so items from
+    // different chunks land in the same rows exactly as a single response would.
+    let mut result_vec = Vec::new();
+    for body in &bodies {
+        let envelope: TimeseriesEnvelope<'_> = serde_json::from_str(body).map_err(YfError::json)?;
+        result_vec.extend(timeseries_results(envelope)?);
+    }
 
     if result_vec.is_empty() {
         return Ok(ctx.finish(vec![]));
@@ -179,22 +301,16 @@ where
     let (direct_currency, needs_currency) =
         timeseries_currency_evidence(&result_vec, prefix, monetary_keys);
     let (currency, currency_issue) = if needs_currency {
-        let projected_currency = project_currency_resolution(
+        resolve_timeseries_currency(
             &mut ctx,
+            client,
             &symbol,
-            CurrencyPurpose::Reporting,
+            currency_kind,
+            override_currency,
             direct_currency.as_deref(),
-            client
-                .resolve_reporting_currency(
-                    &symbol,
-                    override_currency,
-                    ReportingCurrencyEvidence::TimeseriesCurrencyCode(direct_currency.as_deref()),
-                    options,
-                )
-                .await,
-        )?;
-        let currency_issue = projected_currency.issue().cloned();
-        (projected_currency.into_unit(), currency_issue)
+            options,
+        )
+        .await?
     } else {
         (None, None)
     };
@@ -248,12 +364,10 @@ fn item_is_empty_metadata(item: &TimeseriesData<'_>) -> bool {
 async fn fetch_timeseries_body(
     client: &YfClient,
     symbol: &str,
-    endpoint_name: &'static str,
-    prefix: &str,
+    endpoint: &str,
     url: Url,
     options: &CallOptions,
 ) -> Result<String, YfError> {
-    let endpoint = format!("timeseries_{endpoint_name}_{prefix}");
     let (body, _) = crate::core::net::fetch_text_with_auth_retry(
         client,
         url,
@@ -262,7 +376,7 @@ async fn fetch_timeseries_body(
             cache_endpoint: CacheEndpoint::Fundamentals,
             options,
             cache_body: None,
-            endpoint: &endpoint,
+            endpoint,
             fixture_key: symbol,
             ext: "json",
             retry_on_invalid_crumb_body: true,
@@ -340,13 +454,13 @@ fn timeseries_url(
     symbol: &str,
     prefix: &str,
     keys: &[&'static str],
+    (start_ts, end_ts): (i64, i64),
 ) -> Result<Url, YfError> {
     let type_str = keys
         .iter()
         .map(|key| format!("{prefix}{key}"))
         .collect::<Vec<_>>()
         .join(",");
-    let (start_ts, end_ts) = timeseries_window();
 
     let symbol = normalize_symbol(symbol)?;
     let mut url = client.symbol_url(SymbolEndpoint::Timeseries, &symbol)?;
@@ -581,7 +695,7 @@ fn reported_share_count_at(
 }
 
 fn timeseries_value_currency_issue(
-    value: &TimeseriesValueDecimal<'_>,
+    currency_code: Option<&str>,
     expected_code: Option<&str>,
     ignore_value_currency_codes: bool,
 ) -> Option<ProjectionIssue> {
@@ -589,10 +703,8 @@ fn timeseries_value_currency_issue(
         return None;
     }
 
-    let code = value
-        .currency_code
-        .as_ref()
-        .map(|code| code.trim())
+    let code = currency_code
+        .map(str::trim)
         .filter(|code| !code.is_empty())?;
 
     let Some(unit) = ResolvedCurrencyUnit::from_code(code) else {
@@ -683,7 +795,7 @@ fn process_statement_money_values<T>(
 
         let currency_issue_for_value = parsed_timeseries_value(&values, idx).and_then(|parsed| {
             timeseries_value_currency_issue(
-                parsed,
+                parsed.currency_code,
                 expected_currency_code,
                 ignore_value_currency_codes,
             )
@@ -778,9 +890,10 @@ fn assign_income_statement_money(row: &mut IncomeStatementRow, field: &str, mone
 pub(super) async fn income_statement(
     client: &YfClient,
     symbol: &str,
-    quarterly: bool,
+    prefix: &'static str,
     override_currency: Option<Currency>,
     options: &CallOptions,
+    chunk_size: usize,
 ) -> Result<YfResponse<Vec<IncomeStatementRow>>, YfError> {
     let keys = [
         "TotalRevenue",
@@ -797,12 +910,14 @@ pub(super) async fn income_statement(
         TimeseriesRequest {
             client,
             symbol,
-            quarterly,
+            prefix,
             override_currency,
             options,
             keys: &keys,
             monetary_keys: &keys,
             endpoint_name,
+            currency_kind: TimeseriesCurrencyKind::Reporting,
+            chunk_size,
         },
         |item| {
             process_statement_money_values(
@@ -877,9 +992,10 @@ fn process_balance_sheet_item(item: TimeseriesItem<'_, BalanceSheetRow>) -> Resu
 pub(super) async fn balance_sheet(
     client: &YfClient,
     symbol: &str,
-    quarterly: bool,
+    prefix: &'static str,
     override_currency: Option<Currency>,
     options: &CallOptions,
+    chunk_size: usize,
 ) -> Result<YfResponse<Vec<BalanceSheetRow>>, YfError> {
     let keys = [
         "TotalAssets",
@@ -918,12 +1034,14 @@ pub(super) async fn balance_sheet(
         TimeseriesRequest {
             client,
             symbol,
-            quarterly,
+            prefix,
             override_currency,
             options,
             keys: &keys,
             monetary_keys: &monetary_keys,
             endpoint_name,
+            currency_kind: TimeseriesCurrencyKind::Reporting,
+            chunk_size,
         },
         process_balance_sheet_item,
     )
@@ -955,9 +1073,10 @@ fn assign_cashflow_money(row: &mut CashflowRow, field: &str, money: Option<Money
 pub(super) async fn cashflow(
     client: &YfClient,
     symbol: &str,
-    quarterly: bool,
+    prefix: &'static str,
     override_currency: Option<Currency>,
     options: &CallOptions,
+    chunk_size: usize,
 ) -> Result<YfResponse<Vec<CashflowRow>>, YfError> {
     let keys = [
         "OperatingCashFlow",
@@ -972,12 +1091,14 @@ pub(super) async fn cashflow(
         TimeseriesRequest {
             client,
             symbol,
-            quarterly,
+            prefix,
             override_currency,
             options,
             keys: &keys,
             monetary_keys: &keys,
             endpoint_name,
+            currency_kind: TimeseriesCurrencyKind::Reporting,
+            chunk_size,
         },
         |item| process_statement_money_values(item, empty_cashflow_row, assign_cashflow_money),
     )
@@ -1008,6 +1129,238 @@ pub(super) async fn cashflow(
     }
 
     Ok(ctx.finish(result.data))
+}
+
+/* ---------------- valuation measures ---------------- */
+
+/// Valuation-measure timeseries keys (without frequency prefix), in Yahoo key-statistics order.
+///
+/// Mirrors Python yfinance's `_VALUATION_MEASURE_LABELS` (note Yahoo's `Enterprises…` spelling).
+pub(super) const VALUATION_KEYS: [&str; 9] = [
+    "MarketCap",
+    "EnterpriseValue",
+    "PeRatio",
+    "ForwardPeRatio",
+    "PegRatio",
+    "PsRatio",
+    "PbRatio",
+    "EnterprisesValueRevenueRatio",
+    "EnterprisesValueEBITDARatio",
+];
+
+const VALUATION_MONETARY_KEYS: [&str; 2] = ["MarketCap", "EnterpriseValue"];
+
+#[derive(serde::Deserialize)]
+struct TimeseriesValuationPoint<'a> {
+    #[serde(rename = "asOfDate")]
+    #[serde(default)]
+    as_of_date: WireValue<String>,
+    #[serde(rename = "currencyCode")]
+    currency_code: Option<&'a str>,
+    #[serde(rename = "reportedValue")]
+    #[serde(default)]
+    reported_value: WireValue<RawDecimal>,
+}
+
+const fn empty_valuation_row(as_of: NaiveDate) -> ValuationRow {
+    ValuationRow {
+        as_of,
+        market_cap: None,
+        enterprise_value: None,
+        trailing_pe: None,
+        forward_pe: None,
+        peg_ratio: None,
+        price_to_sales: None,
+        price_to_book: None,
+        enterprise_value_to_revenue: None,
+        enterprise_value_to_ebitda: None,
+    }
+}
+
+fn assign_valuation_ratio(row: &mut ValuationRow, field: &str, value: Option<paft::Decimal>) {
+    match field {
+        "PeRatio" => row.trailing_pe = value,
+        "ForwardPeRatio" => row.forward_pe = value,
+        "PegRatio" => row.peg_ratio = value,
+        "PsRatio" => row.price_to_sales = value,
+        "PbRatio" => row.price_to_book = value,
+        "EnterprisesValueRevenueRatio" => row.enterprise_value_to_revenue = value,
+        "EnterprisesValueEBITDARatio" => row.enterprise_value_to_ebitda = value,
+        _ => {}
+    }
+}
+
+fn assign_valuation_money(row: &mut ValuationRow, field: &str, value: Option<Money>) {
+    match field {
+        "MarketCap" => row.market_cap = value,
+        "EnterpriseValue" => row.enterprise_value = value,
+        _ => {}
+    }
+}
+
+/// Resolves a valuation point's as-of date: Yahoo's `asOfDate`, else the aligned `timestamp`.
+fn valuation_point_date(
+    ctx: &mut ProjectionContext,
+    point: &TimeseriesValuationPoint<'_>,
+    timestamp: Option<i64>,
+    row_key: &str,
+) -> Result<Option<NaiveDate>, YfError> {
+    let issue = match &point.as_of_date {
+        WireValue::Valid(raw) => match NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d") {
+            Ok(date) => return Ok(Some(date)),
+            Err(err) => ProjectionIssue::InvalidField {
+                field: "asOfDate",
+                details: format!("{raw:?}: {err}"),
+            },
+        },
+        WireValue::Invalid(details) => ProjectionIssue::InvalidField {
+            field: "asOfDate",
+            details: details.to_string(),
+        },
+        WireValue::Missing => match timestamp.map(i64_to_date) {
+            Some(Ok(date)) => return Ok(Some(date)),
+            Some(Err(err)) => ProjectionIssue::InvalidField {
+                field: "timestamp",
+                details: err.to_string(),
+            },
+            None => ProjectionIssue::MissingRequiredField { field: "asOfDate" },
+        },
+    };
+    ctx.dropped_item("timeseries_value", Some(row_key), issue)?;
+    Ok(None)
+}
+
+fn process_valuation_item(item: TimeseriesItem<'_, ValuationRow>) -> Result<(), YfError> {
+    let TimeseriesItem {
+        key,
+        values_json,
+        rows_map,
+        timestamps,
+        prefix,
+        currency,
+        currency_issue,
+        expected_currency_code,
+        ignore_value_currency_codes,
+        ctx,
+    } = item;
+
+    let Some(field) = key.strip_prefix(prefix) else {
+        return Ok(());
+    };
+    if !VALUATION_KEYS.contains(&field) {
+        return Ok(());
+    }
+    let is_money = VALUATION_MONETARY_KEYS.contains(&field);
+
+    let points = match serde_json::from_str::<Vec<&serde_json::value::RawValue>>(values_json.get())
+    {
+        Ok(points) => points,
+        Err(err) => {
+            ctx.dropped_item(
+                "timeseries_item",
+                Some(key),
+                ProjectionIssue::InvalidField {
+                    field: "values",
+                    details: err.to_string(),
+                },
+            )?;
+            return Ok(());
+        }
+    };
+
+    for (idx, raw_point) in points.into_iter().enumerate() {
+        let row_key = format!("{field}[{idx}]");
+        // Yahoo pads valuation series with explicit `null` placeholders for periods it has
+        // no value for; those carry no data and are skipped (Python yfinance does the same).
+        if raw_point.get().trim() == "null" {
+            continue;
+        }
+        let point = match serde_json::from_str::<TimeseriesValuationPoint<'_>>(raw_point.get()) {
+            Ok(point) => point,
+            Err(err) => {
+                ctx.dropped_item(
+                    "timeseries_value",
+                    Some(&row_key),
+                    ProjectionIssue::InvalidField {
+                        field: "values",
+                        details: err.to_string(),
+                    },
+                )?;
+                continue;
+            }
+        };
+
+        let Some(value) = point.reported_value.optional_raw_field(
+            ctx,
+            "timeseries.reportedValue",
+            Some(&row_key),
+            "reportedValue",
+        )?
+        else {
+            continue;
+        };
+        let Some(as_of) =
+            valuation_point_date(ctx, &point, timestamps.get(idx).copied(), &row_key)?
+        else {
+            continue;
+        };
+        let row = rows_map
+            .entry(i64::from(as_of.num_days_from_ce()))
+            .or_insert_with(|| empty_valuation_row(as_of));
+
+        if is_money {
+            let money = match timeseries_value_currency_issue(
+                point.currency_code,
+                expected_currency_code,
+                ignore_value_currency_codes,
+            ) {
+                Some(issue) => {
+                    ctx.omitted_present_field("timeseries.reportedValue", Some(&row_key), issue)?;
+                    None
+                }
+                None => optional_money_decimal_with_currency_issue(
+                    ctx,
+                    "timeseries.reportedValue",
+                    Some(&row_key),
+                    currency,
+                    currency_issue,
+                    Some(value),
+                    "valuation monetary value",
+                )?,
+            };
+            assign_valuation_money(row, field, money);
+        } else {
+            assign_valuation_ratio(row, field, Some(value));
+        }
+    }
+
+    Ok(())
+}
+
+pub(super) async fn valuation_measures(
+    client: &YfClient,
+    symbol: &str,
+    frequency: ValuationFrequency,
+    override_currency: Option<Currency>,
+    options: &CallOptions,
+    chunk_size: usize,
+) -> Result<YfResponse<Vec<ValuationRow>>, YfError> {
+    fetch_timeseries_data(
+        TimeseriesRequest {
+            client,
+            symbol,
+            prefix: frequency.timeseries_prefix(),
+            override_currency,
+            options,
+            keys: &VALUATION_KEYS,
+            monetary_keys: &VALUATION_MONETARY_KEYS,
+            endpoint_name: "valuation",
+            currency_kind: TimeseriesCurrencyKind::Trading,
+            chunk_size,
+        },
+        process_valuation_item,
+    )
+    .await
 }
 
 fn earnings_has_monetary_values(earnings: &crate::fundamentals::wire::EarningsNode<'_>) -> bool {

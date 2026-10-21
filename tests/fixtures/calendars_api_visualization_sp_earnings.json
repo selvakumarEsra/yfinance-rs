@@ -1,0 +1,31 @@
+{
+  "finance": {
+    "result": [
+      {
+        "documents": [
+          {
+            "entityIdType": "sp_earnings",
+            "totalCount": 3,
+            "columns": [
+              {"id": "ticker", "label": "Symbol", "type": "STRING"},
+              {"id": "companyshortname", "label": "Company Name", "type": "STRING"},
+              {"id": "eventname", "label": "Event Name", "type": "STRING"},
+              {"id": "startdatetime", "label": "Event Start Date", "type": "DATE"},
+              {"id": "startdatetimetype", "label": "Event Start Date", "type": "STRING"},
+              {"id": "epsestimate", "label": "EPS Estimate", "type": "NUMBER"},
+              {"id": "epsactual", "label": "Reported EPS", "type": "NUMBER"},
+              {"id": "epssurprisepct", "label": "Surprise (%)", "type": "NUMBER"},
+              {"id": "intradaymarketcap", "label": "Market Cap (Intraday)", "type": "NUMBER"}
+            ],
+            "rows": [
+              ["NVDA", "NVIDIA Corporation", "Q3 2026 Earnings Call", "2025-11-05T21:20:00.000Z", "AMC", 1.25, null, null, 4500000000000],
+              ["PLTR", "Palantir Technologies Inc.", "Q3 2025 Earnings Release", "2025-11-03T21:00:00Z", "AMC", 0.17, 0.21, 23.53, 430000000000],
+              ["BADD", "Bad Date Inc.", "Q3 2025 Earnings Call", "not-a-date", "TNS", 0.1, null, null, 1000000000]
+            ]
+          }
+        ]
+      }
+    ],
+    "error": null
+  }
+}

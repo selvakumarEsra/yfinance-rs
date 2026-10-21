@@ -2,12 +2,14 @@ mod api;
 mod model;
 
 mod fetch;
+mod valuation;
 mod wire;
 
 pub use model::{
     BalanceSheetRow, Calendar, CashflowRow, Earnings, EarningsQuarter, EarningsQuarterEps,
     EarningsYear, IncomeStatementRow, ShareCount,
 };
+pub use valuation::{ValuationBuilder, ValuationFrequency, ValuationRow};
 
 use crate::core::{CallOptions, DataQuality, YfClient, YfError, YfResponse};
 use chrono::{DateTime, Utc};
@@ -18,6 +20,7 @@ pub struct FundamentalsBuilder {
     client: YfClient,
     symbol: String,
     options: CallOptions,
+    chunk_size: usize,
 }
 
 impl FundamentalsBuilder {
@@ -27,10 +30,20 @@ impl FundamentalsBuilder {
             client: client.clone(),
             symbol: symbol.into(),
             options: CallOptions::default(),
+            chunk_size: api::TIMESERIES_MAX_KEYS_PER_REQUEST,
         }
     }
 
     crate::core::impl_call_option_setters!();
+
+    /// (Internal testing only) Overrides the maximum number of keys per timeseries request.
+    #[cfg(any(test, feature = "test-mode"))]
+    #[doc(hidden)]
+    #[must_use]
+    pub const fn _timeseries_chunk_size(mut self, chunk_size: usize) -> Self {
+        self.chunk_size = chunk_size;
+        self
+    }
 
     /// Fetches the income statement.
     ///
@@ -65,9 +78,10 @@ impl FundamentalsBuilder {
         api::income_statement(
             &self.client,
             &self.symbol,
-            quarterly,
+            api::statement_prefix(quarterly),
             override_currency,
             &self.options,
+            self.chunk_size,
         )
         .await
     }
@@ -105,9 +119,10 @@ impl FundamentalsBuilder {
         api::balance_sheet(
             &self.client,
             &self.symbol,
-            quarterly,
+            api::statement_prefix(quarterly),
             override_currency,
             &self.options,
+            self.chunk_size,
         )
         .await
     }
@@ -145,9 +160,87 @@ impl FundamentalsBuilder {
         api::cashflow(
             &self.client,
             &self.symbol,
-            quarterly,
+            api::statement_prefix(quarterly),
             override_currency,
             &self.options,
+            self.chunk_size,
+        )
+        .await
+    }
+
+    /// Fetches the trailing-twelve-month (TTM) income statement.
+    ///
+    /// Requests only Yahoo's `trailing*` timeseries keys and returns the rows Yahoo
+    /// provides (normally a single row), newest first, in the same row type as the
+    /// annual and quarterly statements.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `YfError` if the network request fails or the API response cannot be parsed.
+    pub async fn ttm_income_statement(
+        &self,
+        override_currency: Option<Currency>,
+    ) -> Result<Vec<IncomeStatementRow>, YfError> {
+        Ok(self
+            .ttm_income_statement_with_diagnostics(override_currency)
+            .await?
+            .into_data())
+    }
+
+    /// Fetches the trailing-twelve-month (TTM) income statement with projection diagnostics.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `YfError` if the request fails or strict data-quality mode rejects a projection issue.
+    pub async fn ttm_income_statement_with_diagnostics(
+        &self,
+        override_currency: Option<Currency>,
+    ) -> Result<YfResponse<Vec<IncomeStatementRow>>, YfError> {
+        api::income_statement(
+            &self.client,
+            &self.symbol,
+            api::TTM_PREFIX,
+            override_currency,
+            &self.options,
+            self.chunk_size,
+        )
+        .await
+    }
+
+    /// Fetches the trailing-twelve-month (TTM) cash flow statement.
+    ///
+    /// Requests only Yahoo's `trailing*` timeseries keys and returns the rows Yahoo
+    /// provides (normally a single row), newest first.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `YfError` if the network request fails or the API response cannot be parsed.
+    pub async fn ttm_cashflow(
+        &self,
+        override_currency: Option<Currency>,
+    ) -> Result<Vec<CashflowRow>, YfError> {
+        Ok(self
+            .ttm_cashflow_with_diagnostics(override_currency)
+            .await?
+            .into_data())
+    }
+
+    /// Fetches the trailing-twelve-month (TTM) cash flow statement with projection diagnostics.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `YfError` if the request fails or strict data-quality mode rejects a projection issue.
+    pub async fn ttm_cashflow_with_diagnostics(
+        &self,
+        override_currency: Option<Currency>,
+    ) -> Result<YfResponse<Vec<CashflowRow>>, YfError> {
+        api::cashflow(
+            &self.client,
+            &self.symbol,
+            api::TTM_PREFIX,
+            override_currency,
+            &self.options,
+            self.chunk_size,
         )
         .await
     }

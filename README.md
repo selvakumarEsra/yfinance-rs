@@ -31,7 +31,15 @@ An ergonomic, async-first Rust client for the unofficial Yahoo Finance API. It p
 * **Cash Flow Statements**: Fetch annual and quarterly cash flow data.
 * **Earnings Data**: Historical earnings, revenue estimates, and EPS data.
 * **Shares Outstanding**: Historical data on shares outstanding (annual and quarterly).
+* **TTM Statements**: Trailing-twelve-month income statement and cash flow.
+* **Valuation Measures**: Market cap, enterprise value, and valuation ratios over time.
+* **Earnings History & Dates**: Past EPS surprises plus past and upcoming earnings report dates.
+* **SEC Filings**: Recent filings with EDGAR links and exhibits.
 * **Corporate Calendar**: Earnings dates, ex-dividend dates, and dividend payment dates.
+
+### Funds & ETFs
+
+* **Funds Data**: Top holdings, sector weightings, asset classes, and bond ratings for ETFs and mutual funds.
 
 ### Options & Derivatives
 
@@ -64,6 +72,9 @@ An ergonomic, async-first Rust client for the unofficial Yahoo Finance API. It p
 * **Company News**: Retrieve the latest articles and press releases for a ticker.
 * **Company Profiles**: Detailed information about companies, ETFs, and funds.
 * **Search**: Find tickers by name or keyword.
+* **Lookup**: Find symbols filtered by asset type (equity, ETF, future, currency, crypto, ...).
+* **Market Status & Summary**: Market open/close times and regional index snapshots.
+* **Calendars**: Market-wide earnings, IPO, stock split, and economic event calendars.
 
 ### Real-time Streaming (WebSocket/Polling)
 
@@ -92,7 +103,8 @@ yfinance-rs = { version = "0.9.1", features = ["stream"] }
 * **Async API**: Built on `tokio` and `reqwest` for non-blocking I/O.
 * **High-Level `Ticker` Interface**: A convenient, yfinance-like struct for accessing all data for a single symbol.
 * **Builder Pattern**: Fluent builders for constructing complex queries.
-* **Configurable Retries**: Automatic retries with exponential backoff for transient network errors.
+* **Configurable Retries**: Automatic retries with exponential backoff for transient network errors, honouring Yahoo's `Retry-After`.
+* **Rate Limiting**: Optional client-side request budget shared across client clones.
 * **Caching**: Configurable caching behavior for API responses.
 * **Custom Timeouts**: Configurable request timeouts and connection settings.
 
