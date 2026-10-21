@@ -6,3 +6,6 @@ Cargo.lock
 
 # Stitch workspace (per-user)
 .stitchworkspace/local/
+
+# Claude Code agent worktrees
+.claude/worktrees/
