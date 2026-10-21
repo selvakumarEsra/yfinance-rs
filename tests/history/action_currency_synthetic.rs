@@ -92,7 +92,7 @@ async fn action_without_event_or_default_currency_is_omitted() {
 
     chart_mock.assert();
     assert!(quote_mock.calls() >= 1);
-    assert!(response.actions.is_empty());
+    assert_eq!(response.actions, [] as [yfinance_rs::Action; 0]);
 }
 
 #[tokio::test]
@@ -140,7 +140,10 @@ async fn candles_without_resolved_currency_are_dropped_with_diagnostics() {
 
     chart_mock.assert();
     quote_mock.assert();
-    assert!(response.data.candles.is_empty());
+    assert_eq!(
+        response.data.candles,
+        [] as [paft::market::GenericCandle; 0]
+    );
     assert!(matches!(
         response.diagnostics.warnings.first(),
         Some(YfWarning::DroppedItem {
@@ -181,7 +184,10 @@ async fn candles_with_invalid_chart_currency_are_dropped_with_diagnostics() {
         .await
         .expect("best-effort invalid chart currency should not abort history");
 
-    assert!(response.data.candles.is_empty());
+    assert_eq!(
+        response.data.candles,
+        [] as [paft::market::GenericCandle; 0]
+    );
     assert!(matches!(
         response.diagnostics.warnings.first(),
         Some(YfWarning::DroppedItem {

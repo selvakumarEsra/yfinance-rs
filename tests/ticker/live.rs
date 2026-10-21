@@ -232,8 +232,8 @@ async fn live_ticker_shares_for_record() {
     let t = yfinance_rs::Ticker::new(&client, "MSFT");
     let annual = t.shares().await.unwrap();
     let quarterly = t.quarterly_shares().await.unwrap();
-    assert!(!annual.is_empty());
-    assert!(!quarterly.is_empty());
+    assert_ne!(annual, [] as [yfinance_rs::ShareCount; 0]);
+    assert_ne!(quarterly, [] as [yfinance_rs::ShareCount; 0]);
     assert!(crate::common::fixture_exists(
         "timeseries_annualOrdinarySharesNumber",
         "MSFT",

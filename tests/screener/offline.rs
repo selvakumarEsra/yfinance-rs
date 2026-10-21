@@ -43,7 +43,7 @@ async fn offline_predefined_day_gainers_uses_get_with_expected_params() {
 
     mock.assert();
     assert!(response.count.is_some_and(|count| count > 0));
-    assert!(!response.results.is_empty());
+    assert_ne!(response.results, [] as [yfinance_rs::ScreenerResult; 0]);
     assert!(response.results[0].symbol.is_some());
     assert!(response.results[0].quote_type.is_some());
 }
@@ -322,7 +322,10 @@ async fn screener_yahoo_exchange_codes_normalize_without_diagnostics() {
         response.data.results[0].yahoo_exchange,
         Some(YahooExchangeCode::Ngm)
     );
-    assert!(response.diagnostics.warnings.is_empty());
+    assert_eq!(
+        response.diagnostics.warnings,
+        [] as [yfinance_rs::YfWarning; 0]
+    );
 
     ScreenerBuilder::predefined(&client, PredefinedScreener::DayGainers)
         .predefined_screener_base(base)
@@ -484,7 +487,7 @@ async fn predefined_screener_401_with_stale_cached_crumb_refreshes_before_retry(
     cookie.assert();
     crumb.assert();
     ok.assert();
-    assert!(!response.results.is_empty());
+    assert_ne!(response.results, [] as [yfinance_rs::ScreenerResult; 0]);
 }
 
 #[tokio::test]
@@ -535,7 +538,7 @@ async fn offline_custom_equity_query_posts_python_wire_shape() {
         .unwrap();
 
     mock.assert();
-    assert!(!response.results.is_empty());
+    assert_ne!(response.results, [] as [yfinance_rs::ScreenerResult; 0]);
     assert!(response.results[0].symbol.is_some());
 }
 
@@ -590,7 +593,7 @@ async fn explicit_custom_screener_cache_mode_uses_post_body_cache() {
             .fetch()
             .await
             .unwrap();
-        assert!(!response.results.is_empty());
+        assert_ne!(response.results, [] as [yfinance_rs::ScreenerResult; 0]);
     }
 
     mock.assert_calls(1);
@@ -684,5 +687,5 @@ async fn custom_screener_403_with_stale_cached_crumb_refreshes_before_retry() {
     cookie.assert();
     crumb.assert();
     ok.assert();
-    assert!(!response.results.is_empty());
+    assert_ne!(response.results, [] as [yfinance_rs::ScreenerResult; 0]);
 }

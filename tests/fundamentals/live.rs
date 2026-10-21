@@ -41,13 +41,13 @@ async fn live_fundamentals_smoke() {
         // (No strict expectations; shapes vary by company)
         let t = yfinance_rs::Ticker::new(&client, "AAPL");
         let income = t.quarterly_income_stmt(None).await.unwrap();
-        assert!(!income.is_empty());
+        assert_ne!(income, [] as [yfinance_rs::IncomeStatementRow; 0]);
     }
 
     if !crate::common::is_recording() {
         let t = yfinance_rs::Ticker::new(&client, "MSFT");
         let balance_sheet = t.balance_sheet(None).await.unwrap();
-        assert!(!balance_sheet.is_empty());
+        assert_ne!(balance_sheet, [] as [yfinance_rs::BalanceSheetRow; 0]);
         assert!(balance_sheet[0].shares_outstanding.is_some());
     }
 }

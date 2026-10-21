@@ -358,7 +358,10 @@ async fn option_chain_with_diagnostics_drops_contract_when_direct_currency_is_in
         .expect("best-effort invalid direct option-chain currency should drop affected contracts");
     mock.assert();
 
-    assert!(response.data.contracts.is_empty());
+    assert_eq!(
+        response.data.contracts,
+        [] as [paft::market::GenericOptionContract; 0]
+    );
     assert!(response.diagnostics.warnings.iter().any(|warning| matches!(
         warning,
         YfWarning::DroppedItem {

@@ -503,8 +503,8 @@ async fn download_between_params_applied_to_all_symbols() {
         .iter()
         .find(|e| e.instrument.symbol.as_str() == "MSFT")
         .unwrap();
-    assert!(!aapl.history.candles.is_empty());
-    assert!(!msft.history.candles.is_empty());
+    assert_ne!(aapl.history.candles, [] as [paft::market::GenericCandle; 0]);
+    assert_ne!(msft.history.candles, [] as [paft::market::GenericCandle; 0]);
 }
 
 #[tokio::test]

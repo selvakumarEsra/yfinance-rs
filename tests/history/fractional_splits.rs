@@ -180,7 +180,7 @@ async fn history_skips_split_components_that_overflow_action_ratio() {
 
     mock.assert();
     assert_eq!(response.candles.len(), 2);
-    assert!(response.actions.is_empty());
+    assert_eq!(response.actions, [] as [yfinance_rs::Action; 0]);
     assert!((money_to_f64(&response.candles[0].ohlc.close) - 100.0).abs() < 1e-9);
     assert_eq!(
         response.candles[0].volume.as_ref().map(ToString::to_string),

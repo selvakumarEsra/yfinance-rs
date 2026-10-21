@@ -31,7 +31,7 @@ async fn missing_recommendation_trend_module_is_provider_unavailable() {
         .await
         .unwrap();
 
-    assert!(response.data.is_empty());
+    assert_eq!(response.data, [] as [yfinance_rs::RecommendationRow; 0]);
     assert!(matches!(
         response.diagnostics.warnings.first(),
         Some(YfWarning::ProviderFeatureUnavailable {
@@ -81,7 +81,7 @@ async fn missing_earnings_trend_module_is_provider_unavailable() {
         .await
         .unwrap();
 
-    assert!(response.data.is_empty());
+    assert_eq!(response.data, [] as [yfinance_rs::EarningsTrendRow; 0]);
     assert!(matches!(
         response.diagnostics.warnings.first(),
         Some(YfWarning::ProviderFeatureUnavailable {
@@ -199,7 +199,7 @@ async fn recommendation_trend_missing_period_reports_dropped_row() {
         .await
         .unwrap();
 
-    assert!(response.data.is_empty());
+    assert_eq!(response.data, [] as [yfinance_rs::RecommendationRow; 0]);
     assert!(matches!(
         response.diagnostics.warnings.first(),
         Some(YfWarning::DroppedItem {

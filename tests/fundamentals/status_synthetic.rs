@@ -33,9 +33,15 @@ async fn missing_earnings_module_is_provider_unavailable() {
         .await
         .unwrap();
 
-    assert!(response.data.yearly.is_empty());
-    assert!(response.data.quarterly.is_empty());
-    assert!(response.data.quarterly_eps.is_empty());
+    assert_eq!(response.data.yearly, [] as [yfinance_rs::EarningsYear; 0]);
+    assert_eq!(
+        response.data.quarterly,
+        [] as [yfinance_rs::EarningsQuarter; 0]
+    );
+    assert_eq!(
+        response.data.quarterly_eps,
+        [] as [yfinance_rs::EarningsQuarterEps; 0]
+    );
     assert!(matches!(
         response.diagnostics.warnings.first(),
         Some(YfWarning::ProviderFeatureUnavailable {
@@ -128,9 +134,12 @@ async fn quote_summary_http_error_maps_status_and_is_not_cached() {
         .unwrap();
 
     ok.assert();
-    assert!(earnings.yearly.is_empty());
-    assert!(earnings.quarterly.is_empty());
-    assert!(earnings.quarterly_eps.is_empty());
+    assert_eq!(earnings.yearly, [] as [yfinance_rs::EarningsYear; 0]);
+    assert_eq!(earnings.quarterly, [] as [yfinance_rs::EarningsQuarter; 0]);
+    assert_eq!(
+        earnings.quarterly_eps,
+        [] as [yfinance_rs::EarningsQuarterEps; 0]
+    );
 }
 
 #[tokio::test]
@@ -206,9 +215,12 @@ async fn quote_summary_api_error_is_not_cached() {
         .unwrap();
 
     ok.assert();
-    assert!(earnings.yearly.is_empty());
-    assert!(earnings.quarterly.is_empty());
-    assert!(earnings.quarterly_eps.is_empty());
+    assert_eq!(earnings.yearly, [] as [yfinance_rs::EarningsYear; 0]);
+    assert_eq!(earnings.quarterly, [] as [yfinance_rs::EarningsQuarter; 0]);
+    assert_eq!(
+        earnings.quarterly_eps,
+        [] as [yfinance_rs::EarningsQuarterEps; 0]
+    );
 }
 
 #[tokio::test]
@@ -277,7 +289,7 @@ async fn fundamentals_timeseries_http_error_maps_status_and_is_not_cached() {
     let shares = ticker.shares().await.unwrap();
 
     ok.assert();
-    assert!(shares.is_empty());
+    assert_eq!(shares, [] as [yfinance_rs::ShareCount; 0]);
 }
 
 #[tokio::test]
@@ -352,7 +364,7 @@ async fn fundamentals_timeseries_api_error_is_not_cached() {
     let shares = ticker.shares().await.unwrap();
 
     ok.assert();
-    assert!(shares.is_empty());
+    assert_eq!(shares, [] as [yfinance_rs::ShareCount; 0]);
 }
 
 #[tokio::test]
@@ -846,7 +858,7 @@ async fn malformed_share_timestamps_are_reported_as_projection_loss() {
         .await
         .unwrap();
 
-    assert!(response.data.is_empty());
+    assert_eq!(response.data, [] as [yfinance_rs::ShareCount; 0]);
     assert!(response.diagnostics.warnings.iter().any(|warning| matches!(
         warning,
         YfWarning::DroppedItem {

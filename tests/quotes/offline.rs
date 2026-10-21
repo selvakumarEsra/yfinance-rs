@@ -554,7 +554,7 @@ async fn malformed_quote_node_invalid_symbol_is_dropped_from_batch() {
         .await
         .unwrap();
 
-    assert!(response.data.is_empty());
+    assert_eq!(response.data, [] as [paft::market::GenericQuote; 0]);
     assert!(response.diagnostics.warnings.iter().any(|warning| matches!(
         warning,
         YfWarning::DroppedItem {

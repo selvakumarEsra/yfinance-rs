@@ -14,7 +14,7 @@ async fn live_history_smoke() {
         .unwrap();
 
     if !crate::common::is_recording() {
-        assert!(!bars.is_empty());
+        assert_ne!(bars, [] as [paft::market::GenericCandle; 0]);
         assert!(money_to_f64(&bars[0].ohlc.open) > 0.0 && money_to_f64(&bars[0].ohlc.close) > 0.0);
     }
 }

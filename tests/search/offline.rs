@@ -239,7 +239,10 @@ async fn yahoo_search_exchange_codes_normalize_without_diagnostics() {
             .as_deref(),
         Some("NASDAQ")
     );
-    assert!(response.diagnostics.warnings.is_empty());
+    assert_eq!(
+        response.diagnostics.warnings,
+        [] as [yfinance_rs::YfWarning; 0]
+    );
 
     SearchBuilder::new(&client, query)
         .search_base(base)

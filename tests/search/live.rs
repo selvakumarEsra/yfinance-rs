@@ -15,7 +15,7 @@ async fn live_search_smoke_and_or_record() {
     let resp = SearchBuilder::new(&client, query).fetch().await.unwrap();
 
     if !crate::common::is_recording() {
-        assert!(!resp.results.is_empty());
+        assert_ne!(resp.results, [] as [paft::market::GenericSearchResult; 0]);
         // Heuristic: expect to see AAPL when searching "apple"
         let has_aapl = resp
             .results

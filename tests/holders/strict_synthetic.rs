@@ -36,7 +36,7 @@ async fn missing_institution_ownership_module_is_provider_unavailable() {
         .await
         .unwrap();
 
-    assert!(response.data.is_empty());
+    assert_eq!(response.data, [] as [yfinance_rs::InstitutionalHolder; 0]);
     assert!(matches!(
         response.diagnostics.warnings.first(),
         Some(YfWarning::ProviderFeatureUnavailable {
@@ -93,7 +93,7 @@ async fn missing_ownership_list_is_provider_unavailable() {
         .await
         .unwrap();
 
-    assert!(response.data.is_empty());
+    assert_eq!(response.data, [] as [yfinance_rs::InstitutionalHolder; 0]);
     assert!(matches!(
         response.diagnostics.warnings.first(),
         Some(YfWarning::ProviderFeatureUnavailable {
@@ -238,7 +238,7 @@ async fn insider_roster_missing_position_is_not_defaulted_to_officer() {
         .unwrap();
 
     mock.assert();
-    assert!(rows.is_empty());
+    assert_eq!(rows, [] as [yfinance_rs::InsiderRosterHolder; 0]);
 }
 
 #[tokio::test]

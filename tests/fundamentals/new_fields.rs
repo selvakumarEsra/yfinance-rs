@@ -378,9 +378,18 @@ async fn statement_values_without_reported_raw_do_not_create_rows() {
 
     let ticker = make_ticker(&server, symbol);
 
-    assert!(ticker.income_stmt(None).await.unwrap().is_empty());
-    assert!(ticker.balance_sheet(None).await.unwrap().is_empty());
-    assert!(ticker.cashflow(None).await.unwrap().is_empty());
+    assert_eq!(
+        ticker.income_stmt(None).await.unwrap(),
+        [] as [yfinance_rs::IncomeStatementRow; 0]
+    );
+    assert_eq!(
+        ticker.balance_sheet(None).await.unwrap(),
+        [] as [yfinance_rs::BalanceSheetRow; 0]
+    );
+    assert_eq!(
+        ticker.cashflow(None).await.unwrap(),
+        [] as [yfinance_rs::CashflowRow; 0]
+    );
 
     income_mock.assert();
     balance_mock.assert();

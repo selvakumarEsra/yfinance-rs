@@ -32,8 +32,8 @@ async fn live_cached_crumb_optional_endpoints_smoke() {
     let predefined = screen(&client, PredefinedScreener::DayGainers)
         .await
         .unwrap();
-    assert!(!predefined.results.is_empty());
+    assert_ne!(predefined.results, [] as [yfinance_rs::ScreenerResult; 0]);
 
     let expiries = aapl.options().await.unwrap();
-    assert!(!expiries.is_empty());
+    assert_ne!(expiries, [] as [i64; 0]);
 }

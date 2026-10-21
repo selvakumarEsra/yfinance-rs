@@ -209,8 +209,11 @@ async fn missing_timestamp_with_empty_chart_series_returns_empty_history() {
 
     mock.assert();
     assert!(response.diagnostics.is_empty());
-    assert!(response.data.candles.is_empty());
-    assert!(response.data.actions.is_empty());
+    assert_eq!(
+        response.data.candles,
+        [] as [paft::market::GenericCandle; 0]
+    );
+    assert_eq!(response.data.actions, [] as [yfinance_rs::Action; 0]);
     assert_eq!(
         response
             .data

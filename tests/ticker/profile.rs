@@ -134,7 +134,7 @@ async fn live_profile_smoke_and_or_record() {
     } else {
         match profile {
             Profile::Company(company) => {
-                assert!(!company.name.is_empty());
+                assert_ne!(company.name, "");
                 assert!(
                     company.sector.is_some() || company.industry.is_some(),
                     "live company profile for {sym} should include classification metadata"

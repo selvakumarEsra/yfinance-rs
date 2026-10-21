@@ -367,7 +367,7 @@ fn contains_country_key(normalized: &str, key: &str) -> bool {
     })
 }
 
-fn is_word_boundary(bytes: &[u8], index: usize) -> bool {
+const fn is_word_boundary(bytes: &[u8], index: usize) -> bool {
     index == 0 || index == bytes.len() || bytes[index - 1] == b' ' || bytes[index] == b' '
 }
 

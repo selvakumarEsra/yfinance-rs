@@ -85,8 +85,8 @@ async fn offline_news_uses_recorded_fixture() {
 
     // Perform general checks on the first article
     let first = &articles[0];
-    assert!(!first.uuid.is_empty());
-    assert!(!first.title.is_empty());
+    assert_ne!(first.uuid, "");
+    assert_ne!(first.title, "");
     assert!(first.published_at.timestamp() > 0);
 }
 
@@ -160,8 +160,14 @@ async fn default_news_cache_mode_bypasses_response_cache() {
         .unwrap();
     let ticker = Ticker::new(&client, sym);
 
-    assert!(!ticker.news().await.unwrap().is_empty());
-    assert!(!ticker.news().await.unwrap().is_empty());
+    assert_ne!(
+        ticker.news().await.unwrap(),
+        [] as [paft::market::GenericNewsArticle; 0]
+    );
+    assert_ne!(
+        ticker.news().await.unwrap(),
+        [] as [paft::market::GenericNewsArticle; 0]
+    );
     mock.assert_calls(2);
 }
 
@@ -210,33 +216,33 @@ async fn explicit_news_cache_mode_uses_body_aware_response_cache() {
         .unwrap();
     let ticker = Ticker::new(&client, sym);
 
-    assert!(
-        !ticker
+    assert_ne!(
+        ticker
             .news_builder()
             .cache_mode(CacheMode::Use)
             .fetch()
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+        [] as [paft::market::GenericNewsArticle; 0]
     );
-    assert!(
-        !ticker
+    assert_ne!(
+        ticker
             .news_builder()
             .count(5)
             .cache_mode(CacheMode::Use)
             .fetch()
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+        [] as [paft::market::GenericNewsArticle; 0]
     );
-    assert!(
-        !ticker
+    assert_ne!(
+        ticker
             .news_builder()
             .cache_mode(CacheMode::Use)
             .fetch()
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+        [] as [paft::market::GenericNewsArticle; 0]
     );
 
     latest.assert_calls(1);

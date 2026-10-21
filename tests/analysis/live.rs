@@ -34,6 +34,6 @@ async fn live_analysis_smoke_and_or_record() {
         let t = yfinance_rs::Ticker::new(&client, "AAPL");
         let rows = t.recommendations().await.unwrap();
         // Smoke check: when hitting live, expect at least one row
-        assert!(!rows.is_empty());
+        assert_ne!(rows, [] as [yfinance_rs::RecommendationRow; 0]);
     }
 }

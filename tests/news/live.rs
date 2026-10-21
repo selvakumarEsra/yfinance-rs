@@ -20,8 +20,8 @@ async fn live_news_smoke_and_or_record() {
             "Expected to get at least one news article for AAPL"
         );
         let article = &news[0];
-        assert!(!article.uuid.is_empty());
-        assert!(!article.title.is_empty());
+        assert_ne!(article.uuid, "");
+        assert_ne!(article.title, "");
         assert!(article.published_at.timestamp() > 1_000_000_000); // Sanity check timestamp
     }
 }

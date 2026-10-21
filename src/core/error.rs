@@ -353,8 +353,6 @@ impl From<paft::money::MoneyError> for YfError {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error as _;
-
     use super::*;
 
     fn assert_source<T>(error: &YfError)

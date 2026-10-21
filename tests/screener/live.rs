@@ -14,7 +14,7 @@ async fn live_predefined_and_custom_smoke() {
     let predefined = screen(&client, PredefinedScreener::DayGainers)
         .await
         .unwrap();
-    assert!(!predefined.results.is_empty());
+    assert_ne!(predefined.results, [] as [yfinance_rs::ScreenerResult; 0]);
 
     let query = EquityQuery::and(vec![
         equity_fields::REGION.eq(Region::Us),
@@ -27,5 +27,5 @@ async fn live_predefined_and_custom_smoke() {
         .fetch()
         .await
         .unwrap();
-    assert!(!custom.results.is_empty());
+    assert_ne!(custom.results, [] as [yfinance_rs::ScreenerResult; 0]);
 }

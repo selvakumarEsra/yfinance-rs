@@ -14,7 +14,7 @@ async fn live_profile_company() {
         .unwrap();
     match prof {
         Profile::Company(c) => {
-            assert!(!c.name.is_empty());
+            assert_ne!(c.name, "");
         }
         _ => panic!("expected company"),
     }

@@ -416,7 +416,10 @@ async fn earnings_trend_reports_half_present_eps_revision_fields() {
         .unwrap();
 
     assert_eq!(response.data.len(), 1);
-    assert!(response.data[0].eps_revisions.historical.is_empty());
+    assert_eq!(
+        response.data[0].eps_revisions.historical,
+        [] as [paft::fundamentals::RevisionPoint; 0]
+    );
     for (path, missing_field) in [
         ("earningsTrend[].epsRevisions.upLast7days", "downLast7days"),
         (
@@ -547,7 +550,10 @@ async fn offline_earnings_trend_uses_recorded_fixture() {
     assert!(current_year.earnings_estimate.avg.is_some());
     assert!(current_year.revenue_estimate.avg.is_some());
     assert!(current_year.eps_trend.current.is_some());
-    assert!(!current_year.eps_revisions.historical.is_empty());
+    assert_ne!(
+        current_year.eps_revisions.historical,
+        [] as [paft::fundamentals::RevisionPoint; 0]
+    );
 }
 
 #[tokio::test]
